@@ -58,8 +58,7 @@ int main()
       account.SetName(name);
       account.SetEmail(domain);
       account.RequestTemporaryEmailAddress();
-    }
-    else {
+    } else {
       const string base_name = AskBaseName();
       vector<MultiAccount *> accounts;
 
@@ -86,7 +85,7 @@ vector<string> RequestDomainsList()
 {
   cout << "Obteniendo lista de dominios..." << endl;
   vector<string> t;
-  t.push_back("gg ez");
+  t.push_back("123");
   return t;
 }
 
@@ -100,8 +99,7 @@ int AskQuantity()
       cout << "Ingresa la cantidad de cuentas que quieres crear";
       cout << (" (Debe ser entre 1 y " + to_string(MAX_QUANTITY) + ")") << endl;
       first_attempt = false;
-    }
-    else {
+    } else {
       cout << "Cantidad inválida" << endl;
     }
 
@@ -122,8 +120,7 @@ string AskName()
       cout << (" (Debe contener sólo letras y una longitud entre "
         + to_string(MIN_NAME_LENGTH) + " y " + to_string(MAX_NAME_LENGTH) + ")") << endl;
       first_attempt = false;
-    }
-    else {
+    } else {
       cout << "Nombre inválido" << endl;
     }
 
@@ -144,8 +141,7 @@ string AskBaseName()
       cout << (" (Debe contener sólo letras y una longitud entre "
         + to_string(MIN_NAME_LENGTH) + " y " + to_string(MAX_BASE_NAME_LENGTH) + ")") << endl;
       first_attempt = false;
-    }
-    else {
+    } else {
       cout << "Nombre base inválido" << endl;
     }
 
@@ -174,11 +170,9 @@ void MultiAccount::SetName(const string base_name)
 {
   if (ID < 10) {
     name = (base_name + "00" + to_string(ID));
-  }
-  else if (ID < 100) {
+  } else if (ID < 100) {
     name = (base_name + "0" + to_string(ID));
-  }
-  else {
+  } else {
     name = (base_name + to_string(ID));
   }
 }
