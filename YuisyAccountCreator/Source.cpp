@@ -4,10 +4,11 @@
 #include <vector>
 #include <limits>
 #include <regex>
-#include "curl/curl.h"
+#include <curl/curl.h>
+#include <hl_md5wrapper.h>
 
 #define RAPIDJSON_HAS_STDSTRING 1
-#include "rapidjson/document.h"
+#include <rapidjson/document.h>
 
 #define MAX_QUANTITY 100
 #define MIN_NAME_LENGTH 3
@@ -26,8 +27,9 @@ string AskPassword(bool);
 
 class Account {
 public:
-  void SetEmail(string);
-  void RequestTemporaryEmailAddress();
+  void SetEmail(vector<string>);
+  void CreateYuisyAccount();
+  void RequestAndCheckTemporaryEmailAddress();
 protected:
   string name;
   string email;
@@ -35,15 +37,15 @@ protected:
 
 class SingleAccount : public Account {
 public:
-  SingleAccount(const string Name) { name = Name; }
+  SingleAccount(const string kName) { name = kName; }
 };
 
 class MultiAccount : public Account {
 public:
-  MultiAccount(const int Id) : id(Id) {}
+  MultiAccount(const int kID) : kID(kID) {}
   void SetName(string);
 private:
-  const int id;
+  const int kID;
 };
 
 int main()
@@ -56,30 +58,30 @@ int main()
 
   curl_global_init(CURL_GLOBAL_ALL);
 
-  const vector<string> domains_list = RequestDomainsList();
+  const vector<string> kDomainsList = RequestDomainsList();
   bool exit = true;
 
   do {
-    const unsigned quantity = AskQuantity();
+    const unsigned kQuantity = AskQuantity();
     string password;
 
-    if (quantity == 1) {
-      const string name = AskName(false);
+    if (kQuantity == 1) {
+      const string kName = AskName(false);
       password = AskPassword(false);
-      SingleAccount account(name);
-      account.SetEmail(domains_list[(rand() % domains_list.size())]);
-      account.RequestTemporaryEmailAddress();
+      SingleAccount account(kName);
+      account.SetEmail(kDomainsList);
+      account.RequestAndCheckTemporaryEmailAddress();
     } else {
-      const string base_name = AskName(true);
+      const string kBaseName = AskName(true);
       password = AskPassword(true);
       vector<MultiAccount *> accounts;
 
-      for (unsigned i = 0; i < quantity; ++i) {
-        const int id = (i + 1);
-        MultiAccount *account = new MultiAccount(id);
-        account->SetName(base_name);
-        account->SetEmail(domains_list[(rand() % domains_list.size())]);
-        account->RequestTemporaryEmailAddress();
+      for (unsigned i = 0; i < kQuantity; ++i) {
+        const int kID = (i + 1);
+        MultiAccount *account = new MultiAccount(kID);
+        account->SetName(kBaseName);
+        account->SetEmail(kDomainsList);
+        account->RequestAndCheckTemporaryEmailAddress();
         accounts.push_back(account);
       }
       // ...
@@ -123,10 +125,10 @@ vector<string> RequestDomainsList()
 
     rapidjson::Document document;
     document.Parse(json);
-    const rapidjson::Value &a = document;
+    const rapidjson::Value &kJsonArray = document;
 
-    for (rapidjson::SizeType i = 0; i < a.Size(); ++i)
-      domains_list.push_back(a[i].GetString());
+    for (rapidjson::SizeType i = 0; i < kJsonArray.Size(); ++i)
+      domains_list.push_back(kJsonArray[i].GetString());
 
     curl_easy_cleanup(curl);
   }
@@ -154,36 +156,36 @@ int AskQuantity()
   return stoi(answer);
 }
 
-string AskName(const bool multiple)
+string AskName(const bool kMultiple)
 {
   bool first_attempt = true;
   string answer;
 
   do {
     if (first_attempt) {
-      cout << "< Ingresa un " << (multiple ? "nombre base para las cuentas" : "nombre para la cuenta");
+      cout << "< Ingresa un " << (kMultiple ? "nombre base para las cuentas" : "nombre para la cuenta");
       cout << (" (Debe contener sólo letras y una longitud entre "
-        + to_string(MIN_NAME_LENGTH) + " y " + to_string(multiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + ")") << endl;
+        + to_string(MIN_NAME_LENGTH) + " y " + to_string(kMultiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + ")") << endl;
       first_attempt = false;
     } else {
-      cout << "> " << (multiple ? "Nombre base" : "Nombre") << " inválido" << endl;
+      cout << "> " << (kMultiple ? "Nombre base" : "Nombre") << " inválido" << endl;
     }
 
     cin >> answer;
   } while (!regex_match(answer, regex("^([a-zA-Z]{"
-    + to_string(MIN_NAME_LENGTH) + "," + to_string(multiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + "})$")));
+    + to_string(MIN_NAME_LENGTH) + "," + to_string(kMultiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + "})$")));
 
   return answer;
 }
 
-string AskPassword(const bool multiple)
+string AskPassword(const bool kMultiple)
 {
   bool first_attempt = true;
   string answer;
 
   do {
     if (first_attempt) {
-      cout << "< Ingresa una contrasenya para " << (multiple ? "las cuentas" : "la cuenta");
+      cout << "< Ingresa una contrasenya para " << (kMultiple ? "las cuentas" : "la cuenta");
       cout << (" (Debe contener sólo letras y numeros, y una longitud entre "
         + to_string(MIN_PASSWORD_LENGTH) + " y " + to_string(MAX_PASSWORD_LENGTH) + ")") << endl;
       first_attempt = false;
@@ -199,22 +201,44 @@ string AskPassword(const bool multiple)
   return answer;
 }
 
-inline void Account::SetEmail(const string domain)
+inline void Account::SetEmail(const vector<string> kDomainsList)
 {
-  email = (name + domain);
+  email = (name + kDomainsList[(rand() % kDomainsList.size())]);
 }
 
-void Account::RequestTemporaryEmailAddress()
+void Account::CreateYuisyAccount()
 {
+  //...
 }
 
-void MultiAccount::SetName(const string base_name)
+void Account::RequestAndCheckTemporaryEmailAddress() // ...
 {
-  if (id < 10) {
-    name = (base_name + "00" + to_string(id));
-  } else if (id < 100) {
-    name = (base_name + "0" + to_string(id));
+  CURL *curl = curl_easy_init();
+
+  if (curl) {
+    hashwrapper *md5_wrapper = new md5wrapper();
+    CURLcode res;
+    string json;
+    curl_easy_setopt(curl, CURLOPT_URL, ("http://api.temp-mail.ru/request/mail/id/" + md5_wrapper->getHashFromString(email) + "/format/json/"));
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
+    res = curl_easy_perform(curl);
+
+    if (res != CURLE_OK) {
+    }
+
+    curl_easy_cleanup(curl);
+    delete md5_wrapper;
+  }
+}
+
+void MultiAccount::SetName(const string kBaseName)
+{
+  if (kID < 10) {
+    name = (kBaseName + "00" + to_string(kID));
+  } else if (kID < 100) {
+    name = (kBaseName + "0" + to_string(kID));
   } else {
-    name = (base_name + to_string(id));
+    name = (kBaseName + to_string(kID));
   }
 }
