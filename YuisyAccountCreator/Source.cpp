@@ -5,6 +5,8 @@
 #include <limits>
 #include <regex>
 #include "curl/curl.h"
+
+#define RAPIDJSON_HAS_STDSTRING 1
 #include "rapidjson/document.h"
 
 #define MAX_QUANTITY 100
@@ -15,8 +17,8 @@
 #define MAX_PASSWORD_LENGTH 16
 
 using namespace std;
-using namespace rapidjson;
 
+size_t WriteFunction(char *ptr, size_t size, size_t nmemb, string *userdata);
 vector<string> RequestDomainsList();
 int AskQuantity();
 string AskName();
@@ -48,9 +50,14 @@ private:
 int main()
 {
   locale::global(locale("spanish"));
+
+  cout << "# Yuisy Account Creator" << endl;
+  cout << "# Hecho por Mars.-" << endl;
+  cout << "# Reportar problemas al siguiente correo: everythingispermitted@outlook.com" << endl << endl;
+
   curl_global_init(CURL_GLOBAL_ALL);
 
-  string domain = RequestDomainsList()[0];
+  const vector<string> domains_list = RequestDomainsList();
   bool exit = true;
 
   do {
@@ -59,7 +66,7 @@ int main()
     if (quantity == 1) {
       const string name = AskName();
       SingleAccount account(name);
-      account.SetEmail(domain);
+      account.SetEmail(domains_list[(rand() % (domains_list.size() + 1))]);
       account.RequestTemporaryEmailAddress();
     } else {
       const string base_name = AskBasename();
@@ -69,7 +76,7 @@ int main()
         const int id = (i + 1);
         MultiAccount *account = new MultiAccount(id);
         account->SetName(base_name);
-        account->SetEmail(domain);
+        account->SetEmail(domains_list[(rand() % (domains_list.size() + 1))]);
         account->RequestTemporaryEmailAddress();
         accounts.push_back(account);
       }
@@ -84,29 +91,44 @@ int main()
   return 0;
 }
 
+size_t WriteFunction(char *ptr, size_t size, size_t nmemb, string *userdata)
+{
+  size_t real_size = (size * nmemb);
+  userdata->append(ptr, real_size);
+  return real_size;
+}
+
 vector<string> RequestDomainsList()
 {
+  cout << "> Obteniendo lista de dominios para los emails temporales..." << endl;
+
   CURL *curl = curl_easy_init();
-  CURLcode res;
-  Document document;
-  vector<string> domains;
+  vector<string> domains_list;
 
   if (curl) {
+    CURLcode res;
+    string json;
     curl_easy_setopt(curl, CURLOPT_URL, "http://api.temp-mail.ru/request/domains/format/json/");
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "a=1&b=2");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, /**/);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
     res = curl_easy_perform(curl);
 
-    if (res == CURLE_OK) {
-      //
-    } else {
-      document.Parse(res);
+    if (res != CURLE_OK) {
+      cout << "> No se pudo obtener la lista" << endl;
+      exit(EXIT_FAILURE);
     }
+
+    rapidjson::Document document;
+    document.Parse(json);
+    const rapidjson::Value &a = document;
+
+    for (rapidjson::SizeType i = 0; i < a.Size(); ++i)
+      domains_list.push_back(a[i].GetString());
 
     curl_easy_cleanup(curl);
   }
 
-  return domains;
+  return domains_list;
 }
 
 int AskQuantity()
@@ -116,11 +138,11 @@ int AskQuantity()
 
   do {
     if (first_attempt) {
-      cout << "Ingresa la cantidad de cuentas que quieres crear";
+      cout << "< Ingresa la cantidad de cuentas que quieres crear";
       cout << (" (Debe ser entre 1 y " + to_string(MAX_QUANTITY) + ")") << endl;
       first_attempt = false;
     } else {
-      cout << "Cantidad inválida" << endl;
+      cout << "> Cantidad inválida" << endl;
     }
 
     cin >> answer;
@@ -136,12 +158,12 @@ string AskName()
 
   do {
     if (first_attempt) {
-      cout << "Ingresa un nombre para la cuenta";
+      cout << "< Ingresa un nombre para la cuenta";
       cout << (" (Debe contener sólo letras y una longitud entre "
         + to_string(MIN_NAME_LENGTH) + " y " + to_string(MAX_NAME_LENGTH) + ")") << endl;
       first_attempt = false;
     } else {
-      cout << "Nombre inválido" << endl;
+      cout << "> Nombre inválido" << endl;
     }
 
     cin >> answer;
@@ -157,12 +179,12 @@ string AskBasename()
 
   do {
     if (first_attempt) {
-      cout << "Ingresa un nombre base para las cuentas";
+      cout << "< Ingresa un nombre base para las cuentas";
       cout << (" (Debe contener sólo letras y una longitud entre "
         + to_string(MIN_NAME_LENGTH) + " y " + to_string(MAX_BASENAME_LENGTH) + ")") << endl;
       first_attempt = false;
     } else {
-      cout << "Nombre base inválido" << endl;
+      cout << "> Nombre base inválido" << endl;
     }
 
     cin >> answer;
