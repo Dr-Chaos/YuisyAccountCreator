@@ -21,9 +21,8 @@ using namespace std;
 size_t WriteFunction(char *ptr, size_t size, size_t nmemb, string *userdata);
 vector<string> RequestDomainsList();
 int AskQuantity();
-string AskName();
-string AskBasename();
-string AskPassword();
+string AskName(bool);
+string AskPassword(bool);
 
 class Account {
 public:
@@ -62,21 +61,24 @@ int main()
 
   do {
     const unsigned quantity = AskQuantity();
+    string password;
 
     if (quantity == 1) {
-      const string name = AskName();
+      const string name = AskName(false);
+      password = AskPassword(false);
       SingleAccount account(name);
-      account.SetEmail(domains_list[(rand() % (domains_list.size() + 1))]);
+      account.SetEmail(domains_list[(rand() % domains_list.size())]);
       account.RequestTemporaryEmailAddress();
     } else {
-      const string base_name = AskBasename();
+      const string base_name = AskName(true);
+      password = AskPassword(true);
       vector<MultiAccount *> accounts;
 
       for (unsigned i = 0; i < quantity; ++i) {
         const int id = (i + 1);
         MultiAccount *account = new MultiAccount(id);
         account->SetName(base_name);
-        account->SetEmail(domains_list[(rand() % (domains_list.size() + 1))]);
+        account->SetEmail(domains_list[(rand() % domains_list.size())]);
         account->RequestTemporaryEmailAddress();
         accounts.push_back(account);
       }
@@ -88,6 +90,7 @@ int main()
   } while (!exit);
 
   curl_global_cleanup();
+  system("PAUSE");
   return 0;
 }
 
@@ -151,57 +154,54 @@ int AskQuantity()
   return stoi(answer);
 }
 
-string AskName()
+string AskName(const bool multiple)
 {
   bool first_attempt = true;
   string answer;
 
   do {
     if (first_attempt) {
-      cout << "< Ingresa un nombre para la cuenta";
+      cout << "< Ingresa un " << (multiple ? "nombre base para las cuentas" : "nombre para la cuenta");
       cout << (" (Debe contener sólo letras y una longitud entre "
-        + to_string(MIN_NAME_LENGTH) + " y " + to_string(MAX_NAME_LENGTH) + ")") << endl;
+        + to_string(MIN_NAME_LENGTH) + " y " + to_string(multiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + ")") << endl;
       first_attempt = false;
     } else {
-      cout << "> Nombre inválido" << endl;
+      cout << "> " << (multiple ? "Nombre base" : "Nombre") << " inválido" << endl;
     }
 
     cin >> answer;
-  } while (!regex_match(answer, regex("^([a-zA-Z]{" + to_string(MIN_NAME_LENGTH) + "," + to_string(MAX_NAME_LENGTH) + "})$")));
+  } while (!regex_match(answer, regex("^([a-zA-Z]{"
+    + to_string(MIN_NAME_LENGTH) + "," + to_string(multiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + "})$")));
 
   return answer;
 }
 
-string AskBasename()
+string AskPassword(const bool multiple)
 {
   bool first_attempt = true;
   string answer;
 
   do {
     if (first_attempt) {
-      cout << "< Ingresa un nombre base para las cuentas";
-      cout << (" (Debe contener sólo letras y una longitud entre "
-        + to_string(MIN_NAME_LENGTH) + " y " + to_string(MAX_BASENAME_LENGTH) + ")") << endl;
+      cout << "< Ingresa una contrasenya para " << (multiple ? "las cuentas" : "la cuenta");
+      cout << (" (Debe contener sólo letras y numeros, y una longitud entre "
+        + to_string(MIN_PASSWORD_LENGTH) + " y " + to_string(MAX_PASSWORD_LENGTH) + ")") << endl;
       first_attempt = false;
-    } else {
-      cout << "> Nombre base inválido" << endl;
+    }
+    else {
+      cout << "Contrasenya inválida" << endl;
     }
 
     cin >> answer;
-  } while (!regex_match(answer, regex("^([a-zA-Z]{" + to_string(MIN_NAME_LENGTH) + "," + to_string(MAX_BASENAME_LENGTH) + "})$")));
+  } while (!regex_match(answer, regex("^([a-zA-Z0-9]{"
+    + to_string(MIN_PASSWORD_LENGTH) + "," + to_string(MAX_PASSWORD_LENGTH) + "})$")));
 
   return answer;
 }
 
-string AskPassword()
+inline void Account::SetEmail(const string domain)
 {
-  string t;
-  return t;
-}
-
-void Account::SetEmail(const string domain)
-{
-  email = (name + "@" + domain);
+  email = (name + domain);
 }
 
 void Account::RequestTemporaryEmailAddress()
