@@ -24,6 +24,7 @@ vector<string> RequestDomainsList();
 int AskQuantity();
 string AskName(bool);
 string AskPassword(bool);
+bool ShouldRestart();
 
 class Account {
 public:
@@ -59,7 +60,6 @@ int main()
   curl_global_init(CURL_GLOBAL_ALL);
 
   const vector<string> kDomainsList = RequestDomainsList();
-  bool exit = true;
 
   do {
     const unsigned kQuantity = AskQuantity();
@@ -89,7 +89,7 @@ int main()
         delete *it;
       }
     }
-  } while (!exit);
+  } while (ShouldRestart());
 
   curl_global_cleanup();
   system("PAUSE");
@@ -120,6 +120,7 @@ vector<string> RequestDomainsList()
 
     if (res != CURLE_OK) {
       cout << "> No se pudo obtener la lista" << endl;
+      system("PAUSE");
       exit(EXIT_FAILURE);
     }
 
@@ -172,8 +173,8 @@ string AskName(const bool kMultiple)
     }
 
     cin >> answer;
-  } while (!regex_match(answer, regex("^([a-zA-Z]{"
-    + to_string(MIN_NAME_LENGTH) + "," + to_string(kMultiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + "})$")));
+  } while (!regex_match(answer, regex("^([a-z]{"
+    + to_string(MIN_NAME_LENGTH) + "," + to_string(kMultiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + "})$", regex_constants::icase)));
 
   return answer;
 }
@@ -189,16 +190,34 @@ string AskPassword(const bool kMultiple)
       cout << (" (Debe contener sólo letras y numeros, y una longitud entre "
         + to_string(MIN_PASSWORD_LENGTH) + " y " + to_string(MAX_PASSWORD_LENGTH) + ")") << endl;
       first_attempt = false;
-    }
-    else {
+    } else {
       cout << "Contrasenya inválida" << endl;
     }
 
     cin >> answer;
-  } while (!regex_match(answer, regex("^([a-zA-Z0-9]{"
-    + to_string(MIN_PASSWORD_LENGTH) + "," + to_string(MAX_PASSWORD_LENGTH) + "})$")));
+  } while (!regex_match(answer, regex("^([a-z0-9]{"
+    + to_string(MIN_PASSWORD_LENGTH) + "," + to_string(MAX_PASSWORD_LENGTH) + "})$", regex_constants::icase)));
 
   return answer;
+}
+
+bool ShouldRestart()
+{
+  bool first_attempt = true;
+  string answer;
+
+  do {
+    if (first_attempt) {
+      cout << "< ¿Crear más cuentas?" << endl;
+      first_attempt = false;
+    } else {
+      cout << "> Responde si/s o no/n" << endl;
+    }
+
+    cin >> answer;
+  } while (!regex_match(answer, regex("^((si|s)|(no|n))$", regex_constants::icase)));
+
+  return regex_match(answer, regex("^(si|s)$", regex_constants::icase)) ? true : false;
 }
 
 inline void Account::SetEmail(const vector<string> kDomainsList)
