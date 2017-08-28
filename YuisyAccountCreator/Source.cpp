@@ -4,6 +4,7 @@
 #include <vector>
 #include <limits>
 #include <regex>
+#include <optional>
 #include <curl/curl.h>
 #include <hl_md5wrapper.h>
 
@@ -28,22 +29,20 @@ bool ShouldRestart();
 
 class Account {
 public:
-  void SetEmail(vector<string>);
+  Account(optional<string> name, string email, string password) : kName(name), kEmail(email), kPassword(password) {}
+  virtual void Create();
   void CreateYuisyAccount();
   void RequestAndCheckTemporaryEmailAddress();
 protected:
-  string name;
-  string email;
-};
-
-class SingleAccount : public Account {
-public:
-  SingleAccount(const string kName) { name = kName; }
+  const optional<string> kName;
+  const string kEmail;
+  const string kPassword;
 };
 
 class MultiAccount : public Account {
 public:
-  MultiAccount(const int kID) : kID(kID) {}
+  MultiAccount(string email, string password, int ID) : Account(nullopt, email, password), kID(ID) {}
+  void Create(string);
   void SetName(string);
 private:
   const int kID;
@@ -66,22 +65,16 @@ int main()
     string password;
 
     if (kQuantity == 1) {
-      const string kName = AskName(false);
-      password = AskPassword(false);
-      SingleAccount account(kName);
-      account.SetEmail(kDomainsList);
-      account.RequestAndCheckTemporaryEmailAddress();
+      Account account(AskName(false), kDomainsList[(rand() % kDomainsList.size())], AskPassword(false));
+      account.Create();
     } else {
       const string kBaseName = AskName(true);
-      password = AskPassword(true);
+      const string kPassword = AskPassword(true);
       vector<MultiAccount *> accounts;
 
       for (unsigned i = 0; i < kQuantity; ++i) {
-        const int kID = (i + 1);
-        MultiAccount *account = new MultiAccount(kID);
-        account->SetName(kBaseName);
-        account->SetEmail(kDomainsList);
-        account->RequestAndCheckTemporaryEmailAddress();
+        MultiAccount *account = new MultiAccount(kDomainsList[(rand() % kDomainsList.size())], kPassword, (i + 1));
+        account->Create(kBaseName);
         accounts.push_back(account);
       }
       // ...
@@ -92,7 +85,6 @@ int main()
   } while (ShouldRestart());
 
   curl_global_cleanup();
-  system("PAUSE");
   return 0;
 }
 
@@ -220,14 +212,17 @@ bool ShouldRestart()
   return regex_match(answer, regex("^(si|s)$", regex_constants::icase)) ? true : false;
 }
 
-inline void Account::SetEmail(const vector<string> kDomainsList)
+void Account::Create()
 {
-  email = (name + kDomainsList[(rand() % kDomainsList.size())]);
+  cout << ("Creando la siguiente cuenta: " + kName.value()) << endl;
+
+  CreateYuisyAccount();
+  RequestAndCheckTemporaryEmailAddress();
 }
 
 void Account::CreateYuisyAccount()
 {
-  //...
+  // ...
 }
 
 void Account::RequestAndCheckTemporaryEmailAddress() // ...
@@ -238,7 +233,7 @@ void Account::RequestAndCheckTemporaryEmailAddress() // ...
     hashwrapper *md5_wrapper = new md5wrapper();
     CURLcode res;
     string json;
-    curl_easy_setopt(curl, CURLOPT_URL, ("http://api.temp-mail.ru/request/mail/id/" + md5_wrapper->getHashFromString(email) + "/format/json/"));
+    curl_easy_setopt(curl, CURLOPT_URL, ("http://api.temp-mail.ru/request/mail/id/" + md5_wrapper->getHashFromString(kEmail) + "/format/json/"));
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
     res = curl_easy_perform(curl);
@@ -251,13 +246,21 @@ void Account::RequestAndCheckTemporaryEmailAddress() // ...
   }
 }
 
+void MultiAccount::Create(const string kBaseName)
+{
+  SetName(kBaseName);
+  Account::Create();
+}
+
 void MultiAccount::SetName(const string kBaseName)
 {
+  optional<string> *name = const_cast<optional<string> *> (&kName);
+
   if (kID < 10) {
-    name = (kBaseName + "00" + to_string(kID));
+    *name = (kBaseName + "00" + to_string(kID));
   } else if (kID < 100) {
-    name = (kBaseName + "0" + to_string(kID));
+    *name = (kBaseName + "0" + to_string(kID));
   } else {
-    name = (kBaseName + to_string(kID));
+    *name = (kBaseName + to_string(kID));
   }
 }
