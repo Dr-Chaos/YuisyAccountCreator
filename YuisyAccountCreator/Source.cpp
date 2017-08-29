@@ -42,11 +42,15 @@ protected:
 class MultiAccount : public Account {
 public:
   MultiAccount(string email, string password, int ID) : Account(nullopt, email, password), kID(ID) {}
-  void Create(string);
-  void SetName(string);
+  inline static void SetBaseName(string);
+  void Create() override;
+  void SetName();
 private:
   const int kID;
+  static string kBaseName;
 };
+
+string MultiAccount::kBaseName;
 
 int main()
 {
@@ -62,19 +66,18 @@ int main()
 
   do {
     const unsigned kQuantity = AskQuantity();
-    string password;
 
     if (kQuantity == 1) {
       Account account(AskName(false), kDomainsList[(rand() % kDomainsList.size())], AskPassword(false));
       account.Create();
     } else {
-      const string kBaseName = AskName(true);
+      MultiAccount::SetBaseName(AskName(true));
       const string kPassword = AskPassword(true);
       vector<MultiAccount *> accounts;
 
       for (unsigned i = 0; i < kQuantity; ++i) {
         MultiAccount *account = new MultiAccount(kDomainsList[(rand() % kDomainsList.size())], kPassword, (i + 1));
-        account->Create(kBaseName);
+        account->Create();
         accounts.push_back(account);
       }
       // ...
@@ -246,13 +249,18 @@ void Account::RequestAndCheckTemporaryEmailAddress() // ...
   }
 }
 
-void MultiAccount::Create(const string kBaseName)
+void MultiAccount::SetBaseName(const string kTargetBaseName)
 {
-  SetName(kBaseName);
+  kBaseName = kTargetBaseName;
+}
+
+void MultiAccount::Create()
+{
+  SetName();
   Account::Create();
 }
 
-void MultiAccount::SetName(const string kBaseName)
+void MultiAccount::SetName()
 {
   optional<string> *name = const_cast<optional<string> *> (&kName);
 
