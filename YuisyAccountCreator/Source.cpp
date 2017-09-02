@@ -1,15 +1,15 @@
 #include <iostream>
-#include <locale>
 #include <string>
 #include <vector>
-#include <limits>
-#include <regex>
 #include <optional>
+#include <locale>
+#include <regex>
 #include <curl/curl.h>
 #include <hl_md5wrapper.h>
 
 #define RAPIDJSON_HAS_STDSTRING 1
 #include <rapidjson/document.h>
+
 
 #define MAX_QUANTITY 100
 #define MIN_NAME_LENGTH 3
@@ -18,57 +18,69 @@
 #define MIN_PASSWORD_LENGTH 6
 #define MAX_PASSWORD_LENGTH 16
 
+
 using namespace std;
 
+
 size_t WriteFunction(char *ptr, size_t size, size_t nmemb, string *userdata);
+
 vector<string> RequestDomainsList();
+
 int AskQuantity();
+
 string AskName(bool);
+
 string AskPassword(bool);
+
 bool ShouldRestart();
 
+
 class Account {
-public:
-  Account(optional<string> name, string email, string password) : kName(name), kEmail(email), kPassword(password) {}
-  virtual void Create();
-  void CreateYuisyAccount();
-  void RequestAndCheckTemporaryEmailAddress();
-protected:
-  const optional<string> kName;
-  const string kEmail;
-  const string kPassword;
+  public:
+    Account(optional<string> name, string password) : kName(name), kPassword(password) {}
+    inline static void SetDomain();
+    virtual void Create();
+    inline void SetEmail();
+    void CreateYuisyAccount();
+    void RequestAndCheckTemporaryEmailAddress();
+  protected:
+    const static string kDomain;
+    const optional<string> kName;
+    const string kEmail;
+    const string kPassword;
 };
+
+const string Account::kDomain; // Si inicializara aquí, me imprimiría el texto que está en la función "RequestDomainsList" antes que la que está en la función "main".
 
 class MultiAccount : public Account {
-public:
-  MultiAccount(string email, string password, int ID) : Account(nullopt, email, password), kID(ID) {}
-  inline static void SetBaseName(string);
-  void Create() override;
-  void SetName();
-private:
-  const int kID;
-  static string kBaseName;
+  public:
+    MultiAccount(string password, int ID) : Account(nullopt, password), kID(ID) {}
+    inline static void SetBaseName(string);
+    void Create() override;
+    void SetName();
+  private:
+    const static string kBaseName;
+    const int kID;
 };
 
-string MultiAccount::kBaseName;
+const string MultiAccount::kBaseName;
+
 
 int main()
 {
   locale::global(locale("spanish"));
 
-  cout << "# Yuisy Account Creator" << endl;
-  cout << "# Hecho por Mars.-" << endl;
-  cout << "# Reportar problemas al siguiente correo: everythingispermitted@outlook.com" << endl << endl;
+  cout << "# Yuisy Account Creator" << endl << "# Hecho por Mars.-" << endl << endl;
 
   curl_global_init(CURL_GLOBAL_ALL);
-
-  const vector<string> kDomainsList = RequestDomainsList();
+  Account::SetDomain();
 
   do {
     const unsigned kQuantity = AskQuantity();
 
     if (kQuantity == 1) {
-      Account account(AskName(false), kDomainsList[(rand() % kDomainsList.size())], AskPassword(false));
+      const string kName = AskName(false); // Al poner la función como parametro, me pregunta primero la password (debe ser por el tipo std::optional).
+      Account account(kName, AskPassword(false));
       account.Create();
     } else {
       MultiAccount::SetBaseName(AskName(true));
@@ -76,7 +88,7 @@ int main()
       vector<MultiAccount *> accounts;
 
       for (unsigned i = 0; i < kQuantity; ++i) {
-        MultiAccount *account = new MultiAccount(kDomainsList[(rand() % kDomainsList.size())], kPassword, (i + 1));
+        MultiAccount *account = new MultiAccount(kPassword, (i + 1));
         account->Create();
         accounts.push_back(account);
       }
@@ -114,14 +126,13 @@ vector<string> RequestDomainsList()
     res = curl_easy_perform(curl);
 
     if (res != CURLE_OK) {
-      cout << "> No se pudo obtener la lista" << endl;
+      cerr << "> No se pudo obtener la lista" << endl;
       system("PAUSE");
       exit(EXIT_FAILURE);
     }
 
     rapidjson::Document document;
-    document.Parse(json);
-    const rapidjson::Value &kJsonArray = document;
+    const rapidjson::Value &kJsonArray = document.Parse(json);
 
     for (rapidjson::SizeType i = 0; i < kJsonArray.Size(); ++i)
       domains_list.push_back(kJsonArray[i].GetString());
@@ -159,9 +170,10 @@ string AskName(const bool kMultiple)
 
   do {
     if (first_attempt) {
-      cout << "< Ingresa un " << (kMultiple ? "nombre base para las cuentas" : "nombre para la cuenta");
-      cout << (" (Debe contener sólo letras y una longitud entre "
-        + to_string(MIN_NAME_LENGTH) + " y " + to_string(kMultiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + ")") << endl;
+      cout << "< Ingresa un nombre " << (kMultiple ? "base para las cuentas" : "para la cuenta")
+           << (" (Debe contener sólo letras y una longitud entre " + to_string(MIN_NAME_LENGTH))
+           << (" y " + to_string(kMultiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + ")") << endl;
+
       first_attempt = false;
     } else {
       cout << "> " << (kMultiple ? "Nombre base" : "Nombre") << " inválido" << endl;
@@ -215,12 +227,23 @@ bool ShouldRestart()
   return regex_match(answer, regex("^(si|s)$", regex_constants::icase)) ? true : false;
 }
 
+void Account::SetDomain()
+{
+  *const_cast<string *> (&kDomain) = RequestDomainsList()[0];
+}
+
 void Account::Create()
 {
   cout << ("Creando la siguiente cuenta: " + kName.value()) << endl;
 
+  SetEmail();
   CreateYuisyAccount();
   RequestAndCheckTemporaryEmailAddress();
+}
+
+void Account::SetEmail()
+{
+  *const_cast<string *> (&kEmail) = (kName.value() + kDomain);
 }
 
 void Account::CreateYuisyAccount()
@@ -251,7 +274,7 @@ void Account::RequestAndCheckTemporaryEmailAddress() // ...
 
 void MultiAccount::SetBaseName(const string kTargetBaseName)
 {
-  kBaseName = kTargetBaseName;
+  *const_cast<string *> (&kBaseName) = kTargetBaseName;
 }
 
 void MultiAccount::Create()
