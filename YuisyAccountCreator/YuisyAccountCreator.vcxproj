@@ -75,7 +75,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>C:\cpplibs\hashlib2plus\trunk\src;C:\cpplibs\rapidjson\rapidjson-master\include;C:\cpplibs\curl-7.55.1\builds\libcurl-vc15-x86-release-static-ipv6-sspi-winssl\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\cpplibs\fmt-4.0.0\fmt-4.0.0;C:\cpplibs\hashlib2plus\trunk\src;C:\cpplibs\rapidjson\rapidjson-master\include;C:\cpplibs\curl-7.55.1\builds\libcurl-vc15-x86-release-static-ipv6-sspi-winssl\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;CURL_STATICLIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -123,6 +123,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\..\..\..\..\cpplibs\fmt-4.0.0\fmt-4.0.0\fmt\format.cc" />
     <ClCompile Include="..\..\..\..\..\..\cpplibs\hashlib2plus\trunk\src\hl_md5.cpp" />
     <ClCompile Include="..\..\..\..\..\..\cpplibs\hashlib2plus\trunk\src\hl_md5wrapper.cpp" />
     <ClCompile Include="Source.cpp" />

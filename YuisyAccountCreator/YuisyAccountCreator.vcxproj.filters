@@ -24,10 +24,8 @@
     <ClCompile Include="..\..\..\..\..\..\cpplibs\hashlib2plus\trunk\src\hl_md5.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="Header.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
+    <ClCompile Include="..\..\..\..\..\..\cpplibs\fmt-4.0.0\fmt-4.0.0\fmt\format.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -4,6 +4,7 @@
 #include <optional>
 #include <locale>
 #include <regex>
+#include <fmt/format.h>
 #include <curl/curl.h>
 #include <hl_md5wrapper.h>
 
@@ -38,7 +39,7 @@ bool ShouldRestart();
 class Account {
   public:
     Account(optional<string> name, string password) : kName(name), kPassword(password) {}
-    inline static void SetDomain();
+    inline static void SetDomain(vector<string>);
     virtual void Create();
     inline void SetEmail();
     void CreateYuisyAccount();
@@ -73,7 +74,7 @@ int main()
   cout << "# Yuisy Account Creator" << endl << "# Hecho por Mars.-" << endl << endl;
 
   curl_global_init(CURL_GLOBAL_ALL);
-  Account::SetDomain();
+  Account::SetDomain(RequestDomainsList());
 
   do {
     const unsigned kQuantity = AskQuantity();
@@ -126,7 +127,7 @@ vector<string> RequestDomainsList()
     res = curl_easy_perform(curl);
 
     if (res != CURLE_OK) {
-      cerr << "> No se pudo obtener la lista" << endl;
+      cerr << "> No se ha podido obtener la lista." << endl;
       system("PAUSE");
       exit(EXIT_FAILURE);
     }
@@ -150,11 +151,12 @@ int AskQuantity()
 
   do {
     if (first_attempt) {
-      cout << "< Ingresa la cantidad de cuentas que quieres crear";
-      cout << (" (Debe ser entre 1 y " + to_string(MAX_QUANTITY) + ")") << endl;
+      cout << "< Ingresa la cantidad de cuentas que quieres crear ";
+      fmt::print("(Debe ser un número entre 1 y {}).\n", MAX_QUANTITY);
+
       first_attempt = false;
     } else {
-      cout << "> Cantidad inválida" << endl;
+      cout << "> Cantidad inválida." << endl;
     }
 
     cin >> answer;
@@ -168,20 +170,23 @@ string AskName(const bool kMultiple)
   bool first_attempt = true;
   string answer;
 
+  const string kRegex = fmt::format("^([a-z]{{{},{}}})$", MIN_NAME_LENGTH,
+    (!kMultiple ? MAX_NAME_LENGTH : MAX_BASENAME_LENGTH));
+
   do {
     if (first_attempt) {
-      cout << "< Ingresa un nombre " << (kMultiple ? "base para las cuentas" : "para la cuenta")
-           << (" (Debe contener sólo letras y una longitud entre " + to_string(MIN_NAME_LENGTH))
-           << (" y " + to_string(kMultiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + ")") << endl;
+      fmt::print("< Ingresa un nombre para {} ", (!kMultiple ? "la cuenta" : "las cuentas"));
+
+      fmt::print("(Debe contener sólo letras y una longitud entre {} y {}).\n", MIN_NAME_LENGTH,
+        (!kMultiple ? MAX_NAME_LENGTH : MAX_BASENAME_LENGTH));
 
       first_attempt = false;
     } else {
-      cout << "> " << (kMultiple ? "Nombre base" : "Nombre") << " inválido" << endl;
+      cout << "> Nombre inválido." << endl;
     }
 
     cin >> answer;
-  } while (!regex_match(answer, regex("^([a-z]{"
-    + to_string(MIN_NAME_LENGTH) + "," + to_string(kMultiple ? MAX_BASENAME_LENGTH : MAX_NAME_LENGTH) + "})$", regex_constants::icase)));
+  } while (!regex_match(answer, regex(kRegex, regex_constants::icase)));
 
   return answer;
 }
@@ -191,19 +196,25 @@ string AskPassword(const bool kMultiple)
   bool first_attempt = true;
   string answer;
 
+  const string kRegex = fmt::format("^([a-z0-9]{{{},{}}})$", MIN_PASSWORD_LENGTH,
+    MAX_PASSWORD_LENGTH);
+
   do {
     if (first_attempt) {
-      cout << "< Ingresa una contrasenya para " << (kMultiple ? "las cuentas" : "la cuenta");
-      cout << (" (Debe contener sólo letras y numeros, y una longitud entre "
-        + to_string(MIN_PASSWORD_LENGTH) + " y " + to_string(MAX_PASSWORD_LENGTH) + ")") << endl;
+      fmt::print("< Ingresa una contraseña para {} ",
+        (!kMultiple ? "la cuenta" : "las cuentas"));
+
+      fmt::print("(Debe contener sólo letras y números, y una longitud entre {} y {}).\n",
+        MIN_PASSWORD_LENGTH,
+        MAX_PASSWORD_LENGTH);
+
       first_attempt = false;
     } else {
-      cout << "Contrasenya inválida" << endl;
+      cout << "> Contraseña inválida." << endl;
     }
 
     cin >> answer;
-  } while (!regex_match(answer, regex("^([a-z0-9]{"
-    + to_string(MIN_PASSWORD_LENGTH) + "," + to_string(MAX_PASSWORD_LENGTH) + "})$", regex_constants::icase)));
+  } while (!regex_match(answer, regex(kRegex, regex_constants::icase)));
 
   return answer;
 }
@@ -218,7 +229,7 @@ bool ShouldRestart()
       cout << "< ¿Crear más cuentas?" << endl;
       first_attempt = false;
     } else {
-      cout << "> Responde si/s o no/n" << endl;
+      cout << "> Responde si/s o no/n." << endl;
     }
 
     cin >> answer;
@@ -227,15 +238,13 @@ bool ShouldRestart()
   return regex_match(answer, regex("^(si|s)$", regex_constants::icase)) ? true : false;
 }
 
-void Account::SetDomain()
+void Account::SetDomain(const vector<string> kDomainsList)
 {
-  *const_cast<string *> (&kDomain) = RequestDomainsList()[0];
+  *const_cast<string *> (&kDomain) = kDomainsList[(rand() % kDomainsList.size())];
 }
 
 void Account::Create()
 {
-  cout << ("Creando la siguiente cuenta: " + kName.value()) << endl;
-
   SetEmail();
   CreateYuisyAccount();
   RequestAndCheckTemporaryEmailAddress();
@@ -257,9 +266,13 @@ void Account::RequestAndCheckTemporaryEmailAddress() // ...
 
   if (curl) {
     hashwrapper *md5_wrapper = new md5wrapper();
-    CURLcode res;
+
+    const string kUrl = fmt::format("http://api.temp-mail.ru/request/mail/id/{}/format/json/",
+      md5_wrapper->getHashFromString(kEmail));
+
     string json;
-    curl_easy_setopt(curl, CURLOPT_URL, ("http://api.temp-mail.ru/request/mail/id/" + md5_wrapper->getHashFromString(kEmail) + "/format/json/"));
+    CURLcode res;
+    curl_easy_setopt(curl, CURLOPT_URL, kUrl);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
     res = curl_easy_perform(curl);
