@@ -18,6 +18,7 @@
 #define MAX_BASENAME_LENGTH (MAX_NAME_LENGTH - 3)
 #define MIN_PASSWORD_LENGTH 6
 #define MAX_PASSWORD_LENGTH 16
+#define COUNTRY_ID 6
 
 
 using namespace std;
@@ -51,7 +52,7 @@ class Account {
     const string kPassword;
 };
 
-const string Account::kDomain; // Si inicializara aquí, me imprimiría el texto que está en la función "RequestDomainsList" antes que la que está en la función "main".
+const string Account::kDomain;
 
 class MultiAccount : public Account {
   public:
@@ -80,7 +81,7 @@ int main()
     const unsigned kQuantity = AskQuantity();
 
     if (kQuantity == 1) {
-      const string kName = AskName(false); // Al poner la función como parametro, me pregunta primero la password (debe ser por el tipo std::optional).
+      const string kName = AskName(false);
       Account account(kName, AskPassword(false));
       account.Create();
     } else {
@@ -151,8 +152,9 @@ int AskQuantity()
 
   do {
     if (first_attempt) {
-      cout << "< Ingresa la cantidad de cuentas que quieres crear ";
-      fmt::print("(Debe ser un número entre 1 y {}).\n", MAX_QUANTITY);
+      fmt::print("< Ingresa la cantidad de cuentas que quieres crear (Debe ser un número entre 1 y"
+        " {}).\n",
+        MAX_QUANTITY);
 
       first_attempt = false;
     } else {
@@ -170,14 +172,16 @@ string AskName(const bool kMultiple)
   bool first_attempt = true;
   string answer;
 
-  const string kRegex = fmt::format("^([a-z]{{{},{}}})$", MIN_NAME_LENGTH,
+  const string kRegex = fmt::format("^([a-z]{{{},{}}})$",
+    MIN_NAME_LENGTH,
     (!kMultiple ? MAX_NAME_LENGTH : MAX_BASENAME_LENGTH));
 
   do {
     if (first_attempt) {
-      fmt::print("< Ingresa un nombre para {} ", (!kMultiple ? "la cuenta" : "las cuentas"));
-
-      fmt::print("(Debe contener sólo letras y una longitud entre {} y {}).\n", MIN_NAME_LENGTH,
+      fmt::print("< Ingresa un nombre para {} (Debe contener sólo letras y una longitud entre {} y"
+        " {}).\n",
+        (!kMultiple ? "la cuenta" : "las cuentas"),
+        MIN_NAME_LENGTH,
         (!kMultiple ? MAX_NAME_LENGTH : MAX_BASENAME_LENGTH));
 
       first_attempt = false;
@@ -196,17 +200,17 @@ string AskPassword(const bool kMultiple)
   bool first_attempt = true;
   string answer;
 
-  const string kRegex = fmt::format("^([a-z0-9]{{{},{}}})$", MIN_PASSWORD_LENGTH,
+  const string kRegex = fmt::format("^([a-z0-9]{{{},{}}})$",
+    MIN_PASSWORD_LENGTH,
     MAX_PASSWORD_LENGTH);
 
   do {
     if (first_attempt) {
-      fmt::print("< Ingresa una contraseña para {} ",
-        (!kMultiple ? "la cuenta" : "las cuentas"));
-
-      fmt::print("(Debe contener sólo letras y números, y una longitud entre {} y {}).\n",
+      fmt::print("< Ingresa una contraseña para {} (Debe contener sólo letras y números, y una "
+        "longitud entre {} y {}).\n",
+        (!kMultiple ? "la cuenta" : "las cuentas"),
         MIN_PASSWORD_LENGTH,
-        MAX_PASSWORD_LENGTH);
+        MIN_PASSWORD_LENGTH);
 
       first_attempt = false;
     } else {
@@ -257,7 +261,26 @@ void Account::SetEmail()
 
 void Account::CreateYuisyAccount()
 {
-  // ...
+  CURL *curl = curl_easy_init();
+
+  if (curl) {
+    const string kPostFields = fmt::format("apodo={0}&email={1}&confirmar_email={1}&password={2}"
+      "&pais={3}&terminos-condiciones=1&form_id=yuisy_login_register_form",
+      kName.value(),
+      kEmail,
+      kPassword,
+      COUNTRY_ID);
+
+    CURLcode res;
+    curl_easy_setopt(curl, CURLOPT_URL, "http://yuisy.com/");
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, kPostFields.c_str());
+    res = curl_easy_perform(curl);
+
+    if (res != CURLE_OK) {
+    }
+
+    curl_easy_cleanup(curl);
+  }
 }
 
 void Account::RequestAndCheckTemporaryEmailAddress() // ...

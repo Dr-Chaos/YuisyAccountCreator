@@ -98,7 +98,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>C:\cpplibs\hashlib2plus\trunk\src;C:\cpplibs\rapidjson\rapidjson-master\include;C:\cpplibs\curl-7.55.1\builds\libcurl-vc15-x86-release-static-ipv6-sspi-winssl\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\cpplibs\fmt-4.0.0\fmt-4.0.0;C:\cpplibs\hashlib2plus\trunk\src;C:\cpplibs\rapidjson\rapidjson-master\include;C:\cpplibs\curl-7.55.1\builds\libcurl-vc15-x86-release-static-ipv6-sspi-winssl\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;CURL_STATICLIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
