@@ -210,7 +210,7 @@ string AskPassword(const bool kMultiple)
         "longitud entre {} y {}).\n",
         (!kMultiple ? "la cuenta" : "las cuentas"),
         MIN_PASSWORD_LENGTH,
-        MIN_PASSWORD_LENGTH);
+        MAX_PASSWORD_LENGTH);
 
       first_attempt = false;
     } else {
