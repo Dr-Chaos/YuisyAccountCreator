@@ -44,23 +44,27 @@ class Account {
     inline static void SetDomain(vector<string>);
     virtual void Create();
   protected:
-    const static string kDomain;
     const optional<string> kName;
+  private:
+    const static string kDomain;
     const string kEmail;
     const string kPassword;
 
-    enum class ErrorCodes {
-      kAtCreateYuisyAccount,
-      kAtRequestAndCheckTemporaryEmailAddress
-    };
+    struct Status {
+      enum class Code {
+        kSuccess,
+        kErrorAt1,
+        kErrorAt2
+      } code;
 
-    optional<ErrorCodes> last_error_code;
-    int reattempts;
-  private:
+      string text;
+      int reattempts;
+    } status;
+
     inline void SetEmail();
     void CreateYuisyAccount();
     void RequestAndCheckTemporaryEmailAddress();
-    void Reattempt(ErrorCodes);
+    void Reattempt(Status::Code);
 };
 
 const string Account::kDomain;
@@ -283,25 +287,40 @@ void Account::CreateYuisyAccount()
       kPassword,
       COUNTRY_ID);
 
+    string html;
     CURLcode res;
     curl_easy_setopt(curl, CURLOPT_URL, "http://yuisy.com/");
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, kPostFields.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &html);
     res = curl_easy_perform(curl);
 
     if (res == CURLE_OK) {
       long http_status_code;
       curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status_code);
+      curl_easy_cleanup(curl);
 
       if (http_status_code == 200) {
-        //
+        if (html.find("valida tu e-mail") != string::npos) {
+          //
+        } else {
+          const string format_str = "el {} {} ya está registrado";
+
+          if (html.find(fmt::format(format_str, "apodo", kName.value())) != string::npos) {
+            //
+          } else if (html.find(fmt::format(format_str, "email", kEmail)) != string::npos) {
+            //
+          } else {
+            //
+          }
+        }
       } else {
-        Reattempt(ErrorCodes::kAtCreateYuisyAccount);
+        Reattempt(Status::Code::kErrorAt2);
       }
     } else {
-      Reattempt(ErrorCodes::kAtCreateYuisyAccount);
+      curl_easy_cleanup(curl);
+      Reattempt(Status::Code::kErrorAt1);
     }
-
-    curl_easy_cleanup(curl);
   }
 }
 
@@ -330,27 +349,26 @@ void Account::RequestAndCheckTemporaryEmailAddress() // ...
   }
 }
 
-void Account::Reattempt(const ErrorCodes kErrorCode)
+void Account::Reattempt(const Status::Code kErrorCode)
 {
-  if (last_error_code.has_value()) {
-    if (reattempts == MAX_REATTEMPTS) {
-      // GG ACC
+  if (kErrorCode == status.code) {
+    if (status.reattempts == MAX_REATTEMPTS) {
       return;
     }
 
-    reattempts++;
+    status.reattempts++;
   } else {
-    last_error_code = kErrorCode;
-    reattempts = 1;
+    status.code = kErrorCode;
+    status.reattempts = 1;
   }
 
   switch (kErrorCode) {
-    case ErrorCodes::kAtCreateYuisyAccount: {
+    case Status::Code::kErrorAt1: {
       CreateYuisyAccount();
       break;
     }
 
-    case ErrorCodes::kAtRequestAndCheckTemporaryEmailAddress: {
+    case Status::Code::kErrorAt2: {
       RequestAndCheckTemporaryEmailAddress();
     }
   }
