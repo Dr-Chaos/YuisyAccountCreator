@@ -19,6 +19,7 @@
 #define MIN_PASSWORD_LENGTH 6
 #define MAX_PASSWORD_LENGTH 16
 #define COUNTRY_ID 6
+#define MAX_REATTEMPTS 3
 
 
 using namespace std;
@@ -50,6 +51,16 @@ class Account {
     const optional<string> kName;
     const string kEmail;
     const string kPassword;
+
+    enum class ErrorCodes {
+      kAtCreateYuisyAccount,
+      kAtRequestAndCheckTemporaryEmailAddress
+    };
+
+    optional<ErrorCodes> last_error_code;
+    int reattempts;
+  private:
+    void Reattempt(ErrorCodes);
 };
 
 const string Account::kDomain;
@@ -276,7 +287,17 @@ void Account::CreateYuisyAccount()
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, kPostFields.c_str());
     res = curl_easy_perform(curl);
 
-    if (res != CURLE_OK) {
+    if (res == CURLE_OK) {
+      long http_status_code;
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status_code);
+
+      if (http_status_code == 200) {
+        //
+      } else {
+        Reattempt(ErrorCodes::kAtCreateYuisyAccount);
+      }
+    } else {
+      Reattempt(ErrorCodes::kAtCreateYuisyAccount);
     }
 
     curl_easy_cleanup(curl);
@@ -305,6 +326,33 @@ void Account::RequestAndCheckTemporaryEmailAddress() // ...
 
     curl_easy_cleanup(curl);
     delete md5_wrapper;
+  }
+}
+
+void Account::Reattempt(const ErrorCodes kErrorCode)
+{
+  if (kErrorCode == last_error_code.value()) {
+    if (reattempts == MAX_REATTEMPTS) {
+      // GG ACC
+      return;
+    }
+
+    reattempts++;
+  } else {
+    last_error_code = kErrorCode;
+    reattempts = 1;
+  }
+
+  switch (kErrorCode) {
+    case ErrorCodes::kAtCreateYuisyAccount: {
+      CreateYuisyAccount();
+      break;
+    }
+
+    case ErrorCodes::kAtRequestAndCheckTemporaryEmailAddress: {
+      RequestAndCheckTemporaryEmailAddress();
+      break;
+    }
   }
 }
 
