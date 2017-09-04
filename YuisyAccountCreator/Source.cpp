@@ -43,9 +43,6 @@ class Account {
     Account(optional<string> name, string password) : kName(name), kPassword(password) {}
     inline static void SetDomain(vector<string>);
     virtual void Create();
-    inline void SetEmail();
-    void CreateYuisyAccount();
-    void RequestAndCheckTemporaryEmailAddress();
   protected:
     const static string kDomain;
     const optional<string> kName;
@@ -60,6 +57,9 @@ class Account {
     optional<ErrorCodes> last_error_code;
     int reattempts;
   private:
+    inline void SetEmail();
+    void CreateYuisyAccount();
+    void RequestAndCheckTemporaryEmailAddress();
     void Reattempt(ErrorCodes);
 };
 
@@ -70,10 +70,11 @@ class MultiAccount : public Account {
     MultiAccount(string password, int ID) : Account(nullopt, password), kID(ID) {}
     inline static void SetBaseName(string);
     void Create() override;
-    void SetName();
   private:
     const static string kBaseName;
     const int kID;
+
+    void SetName();
 };
 
 const string MultiAccount::kBaseName;
@@ -331,7 +332,7 @@ void Account::RequestAndCheckTemporaryEmailAddress() // ...
 
 void Account::Reattempt(const ErrorCodes kErrorCode)
 {
-  if (kErrorCode == last_error_code.value()) {
+  if (last_error_code.has_value()) {
     if (reattempts == MAX_REATTEMPTS) {
       // GG ACC
       return;
@@ -351,7 +352,6 @@ void Account::Reattempt(const ErrorCodes kErrorCode)
 
     case ErrorCodes::kAtRequestAndCheckTemporaryEmailAddress: {
       RequestAndCheckTemporaryEmailAddress();
-      break;
     }
   }
 }
