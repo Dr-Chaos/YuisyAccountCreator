@@ -4,6 +4,7 @@
 #include <optional>
 #include <locale>
 #include <regex>
+#include <functional>
 #include <fmt/format.h>
 #include <curl/curl.h>
 #include <hl_md5wrapper.h>
@@ -20,6 +21,8 @@
 #define MAX_PASSWORD_LENGTH 16
 #define COUNTRY_ID 6
 #define MAX_REATTEMPTS 3
+#define EMAIL_VALIDATION_SLEEP_TIME 5000
+#define MAX_EMAIL_VALIDATION_REATTEMPTS 5
 
 
 using namespace std;
@@ -49,22 +52,37 @@ class Account {
     const static string kDomain;
     const string kEmail;
     const string kPassword;
+    function<void()> Action = bind(&Account::CreateYuisyAccount, this);
 
     struct Status {
       enum class Code {
+        kStartingAccountCreation,
+        kCreatingYuisyAccount,
+        kYuisyAccountCreated,
+        kNicknameAndEmailTaken,
+        kNicknameTaken,
+        kEmailTaken,
+        kRToCreateYuisyAccount,
+        kMaxReattemptsExceeced,
+        kRequestingAndCheckingTemporaryEmailAddress,
+        kEmailValidationLinkFound,
+        kEmailValidationLinkNotFound,
+        kRToFindEmailValidationLink,
+        kRToRequestAndCheckTemporaryEmailAddress,
+        kValidatingTemporaryEmailAddress,
+        kRToValidateTemporaryEmailAddress,
         kSuccess,
-        kErrorAt1,
-        kErrorAt2
-      } code;
+        kFail
+      };
 
-      string text;
-      int reattempts;
+      bool success = false;
     } status;
 
     inline void SetEmail();
+    void PrintStatus(Status::Code, optional<int> = nullopt);
     void CreateYuisyAccount();
     void RequestAndCheckTemporaryEmailAddress();
-    void Reattempt(Status::Code);
+    void ValidateTemporaryEmailAddress(string);
 };
 
 const string Account::kDomain;
@@ -110,7 +128,7 @@ int main()
         account->Create();
         accounts.push_back(account);
       }
-      // ...
+
       for (vector<MultiAccount *>::iterator it = accounts.begin(); it != accounts.end(); ++it) {
         delete *it;
       }
@@ -128,7 +146,7 @@ size_t WriteFunction(char *ptr, size_t size, size_t nmemb, string *userdata)
   return real_size;
 }
 
-vector<string> RequestDomainsList()
+vector<string> RequestDomainsList() // falta pulir
 {
   cout << "> Obteniendo lista de dominios para los emails temporales..." << endl;
 
@@ -136,11 +154,12 @@ vector<string> RequestDomainsList()
   vector<string> domains_list;
 
   if (curl) {
-    CURLcode res;
     string json;
     curl_easy_setopt(curl, CURLOPT_URL, "http://api.temp-mail.ru/request/domains/format/json/");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
+
+    CURLcode res;
     res = curl_easy_perform(curl);
 
     if (res != CURLE_OK) {
@@ -150,10 +169,10 @@ vector<string> RequestDomainsList()
     }
 
     rapidjson::Document document;
-    const rapidjson::Value &kJsonArray = document.Parse(json);
+    const rapidjson::Value &kDomainsList = document.Parse(json);
 
-    for (rapidjson::SizeType i = 0; i < kJsonArray.Size(); ++i)
-      domains_list.push_back(kJsonArray[i].GetString());
+    for (rapidjson::SizeType i = 0; i < kDomainsList.Size(); ++i)
+      domains_list.push_back(kDomainsList[i].GetString());
 
     curl_easy_cleanup(curl);
   }
@@ -260,14 +279,19 @@ bool ShouldRestart()
 
 void Account::SetDomain(const vector<string> kDomainsList)
 {
-  *const_cast<string *> (&kDomain) = kDomainsList[(rand() % kDomainsList.size())];
+  *const_cast<string *> (&kDomain) = kDomainsList[/*(rand() % kDomainsList.size())*/0]; // bug?
 }
 
 void Account::Create()
 {
   SetEmail();
-  CreateYuisyAccount();
-  RequestAndCheckTemporaryEmailAddress();
+  PrintStatus(Status::Code::kStartingAccountCreation);
+
+  do {
+    Action();
+  } while (Action);
+
+  status.success ? PrintStatus(Status::Code::kSuccess) : PrintStatus(Status::Code::kFail);
 }
 
 void Account::SetEmail()
@@ -275,8 +299,99 @@ void Account::SetEmail()
   *const_cast<string *> (&kEmail) = (kName.value() + kDomain);
 }
 
+void Account::PrintStatus(const Status::Code kStatusCode, const optional<int> kReattempt)
+{
+  switch (kStatusCode) {
+    case Status::Code::kStartingAccountCreation: {
+      fmt::print(" Nombre: {}.\n", kName.value());
+      break;
+    }
+
+    case Status::Code::kCreatingYuisyAccount: {
+      cout << "  - Creando cuenta de Yuisy..." << endl;
+      break;
+    }
+
+    case Status::Code::kYuisyAccountCreated: {
+      cout << "  - Se ha creado la cuenta de Yuisy." << endl;
+      break;
+    }
+
+    case Status::Code::kNicknameAndEmailTaken: {
+      cout << "  - El nombre y el email ya están registrados." << endl;
+      break;
+    }
+
+    case Status::Code::kNicknameTaken: {
+      cout << "  - El nombre ya está registrado." << endl;
+      break;
+    }
+
+    case Status::Code::kEmailTaken: {
+      cout << "  - El email ya está registrado." << endl;
+      break;
+    }
+
+    case Status::Code::kRToCreateYuisyAccount: {
+      fmt::print("  - No se pudo crear la cuenta de Yuisy. Reintentando ({}/{})...\n",
+        kReattempt.value(),
+        MAX_REATTEMPTS);
+
+      break;
+    }
+
+    case Status::Code::kMaxReattemptsExceeced: {
+      cout << "  - Se han excedido los reintentos máximos." << endl;
+      break;
+    }
+
+    case Status::Code::kRequestingAndCheckingTemporaryEmailAddress: {
+      cout << "  - Buscando enlace de confirmación de email en la bandeja de entrada..." << endl;
+      break;
+    }
+
+    case Status::Code::kEmailValidationLinkFound: {
+      cout << "  - Se ha encontrado el enlace." << endl;
+      break;
+    }
+
+    case Status::Code::kEmailValidationLinkNotFound: {
+      fmt::print("  - No se ha encontrado el enlace. Reintentando en {} milisegundos.\n",
+        EMAIL_VALIDATION_SLEEP_TIME);
+
+      break;
+    }
+
+    case Status::Code::kRToFindEmailValidationLink: {
+      fmt::print("  - Reintentando encontrar enlace ({}/{})...\n",
+        kReattempt.value(),
+        MAX_EMAIL_VALIDATION_REATTEMPTS);
+
+      break;
+    }
+
+    case Status::Code::kRToRequestAndCheckTemporaryEmailAddress: {
+      fmt::print("  - No se pudo abrir la bandeja de entrada. Reintentando ({}/{})...\n",
+        kReattempt.value(),
+        MAX_REATTEMPTS);
+
+      break;
+    }
+
+    case Status::Code::kSuccess: {
+      cout << "  - La cuenta está lista para ser usada." << endl;
+      break;
+    }
+
+    case Status::Code::kFail: {
+      cout << "  - No se pudo crear la cuenta." << endl;
+    }
+  }
+}
+
 void Account::CreateYuisyAccount()
 {
+  PrintStatus(Status::Code::kCreatingYuisyAccount);
   CURL *curl = curl_easy_init();
 
   if (curl) {
@@ -288,44 +403,68 @@ void Account::CreateYuisyAccount()
       COUNTRY_ID);
 
     string html;
-    CURLcode res;
     curl_easy_setopt(curl, CURLOPT_URL, "http://yuisy.com/");
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, kPostFields.c_str());
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &html);
-    res = curl_easy_perform(curl);
 
-    if (res == CURLE_OK) {
-      long http_status_code;
-      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status_code);
-      curl_easy_cleanup(curl);
+    CURLcode res;
+    int reattempts = 0;
 
-      if (http_status_code == 200) {
-        if (html.find("valida tu e-mail") != string::npos) {
-          //
-        } else {
-          const string format_str = "el {} {} ya está registrado";
+    do {
+      if (!html.empty()) html.clear();
+      res = curl_easy_perform(curl);
 
-          if (html.find(fmt::format(format_str, "apodo", kName.value())) != string::npos) {
-            //
-          } else if (html.find(fmt::format(format_str, "email", kEmail)) != string::npos) {
-            //
+      if (res == CURLE_OK) {
+        long http_status_code;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status_code);
+
+        if (http_status_code == 200 || http_status_code == 302) {
+          if (html.find("valida tu e-mail") != string::npos) {
+            PrintStatus(Status::Code::kYuisyAccountCreated);
+            Action = bind(&Account::RequestAndCheckTemporaryEmailAddress, this);
+            break;
           } else {
-            //
+            const string kFormatStr = "El {} <strong>{}</strong>";
+            const string kNicknameStr = fmt::format(kFormatStr, "apodo", kName.value());
+            const string kEmailStr = fmt::format(kFormatStr, "email", kEmail);
+            const bool kIsNicknameTaken = html.find(kNicknameStr) != string::npos;
+            const bool kIsEmailTaken = html.find(kEmailStr) != string::npos;
+
+            if (kIsNicknameTaken || kIsEmailTaken) {
+              if (kIsNicknameTaken && kIsEmailTaken) {
+                PrintStatus(Status::Code::kNicknameAndEmailTaken);
+              } else if (kIsNicknameTaken) {
+                PrintStatus(Status::Code::kNicknameTaken);
+              } else {
+                PrintStatus(Status::Code::kEmailTaken);
+              }
+
+              Action = nullptr;
+              break;
+            }
           }
         }
-      } else {
-        Reattempt(Status::Code::kErrorAt2);
       }
-    } else {
-      curl_easy_cleanup(curl);
-      Reattempt(Status::Code::kErrorAt1);
-    }
+
+      reattempts++;
+
+      if (reattempts <= MAX_REATTEMPTS) {
+        PrintStatus(Status::Code::kRToCreateYuisyAccount, reattempts);
+      } else {
+        PrintStatus(Status::Code::kMaxReattemptsExceeced);
+        Action = nullptr;
+      }
+    } while (reattempts <= MAX_REATTEMPTS);
+
+    curl_easy_cleanup(curl);
   }
 }
 
-void Account::RequestAndCheckTemporaryEmailAddress() // ...
+void Account::RequestAndCheckTemporaryEmailAddress()
 {
+  PrintStatus(Status::Code::kRequestingAndCheckingTemporaryEmailAddress);
   CURL *curl = curl_easy_init();
 
   if (curl) {
@@ -334,43 +473,99 @@ void Account::RequestAndCheckTemporaryEmailAddress() // ...
     const string kUrl = fmt::format("http://api.temp-mail.ru/request/mail/id/{}/format/json/",
       md5_wrapper->getHashFromString(kEmail));
 
+    delete md5_wrapper;
     string json;
-    CURLcode res;
-    curl_easy_setopt(curl, CURLOPT_URL, kUrl);
+    curl_easy_setopt(curl, CURLOPT_URL, kUrl.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
-    res = curl_easy_perform(curl);
 
-    if (res != CURLE_OK) {
-    }
+    CURLcode res;
+    int reattempts = 0;
+    int email_validation_reattempts = 0;
+
+    do {
+      if (!json.empty()) json.clear();
+      res = curl_easy_perform(curl);
+
+      if (res == CURLE_OK) {
+        long http_status_code;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status_code);
+
+        if (http_status_code == 200) {
+          PrintStatus(Status::Code::kEmailValidationLinkFound);
+
+          rapidjson::Document document;
+          document.Parse(json);
+
+          string mail_text = document[0]["mail_text"].GetString();
+          mail_text.pop_back();
+
+          Action = bind(&Account::ValidateTemporaryEmailAddress, this,
+            mail_text.substr(mail_text.rfind("http")));
+
+          break;
+        } else if (http_status_code == 404) {
+          if (email_validation_reattempts < MAX_EMAIL_VALIDATION_REATTEMPTS) {
+            PrintStatus(Status::Code::kEmailValidationLinkNotFound);
+            Sleep(EMAIL_VALIDATION_SLEEP_TIME);
+            email_validation_reattempts++;
+            PrintStatus(Status::Code::kRToFindEmailValidationLink, email_validation_reattempts);
+            continue;
+          }
+
+          email_validation_reattempts = 0;
+        } else if (http_status_code == 429) {
+          continue;
+        }
+      }
+
+      reattempts++;
+
+      if (reattempts <= MAX_REATTEMPTS) {
+        PrintStatus(Status::Code::kRToRequestAndCheckTemporaryEmailAddress, reattempts);
+      } else {
+        PrintStatus(Status::Code::kMaxReattemptsExceeced);
+        Action = nullptr;
+      }
+    } while (reattempts <= MAX_REATTEMPTS);
 
     curl_easy_cleanup(curl);
-    delete md5_wrapper;
   }
 }
 
-void Account::Reattempt(const Status::Code kErrorCode)
+void Account::ValidateTemporaryEmailAddress(const string kEmailValidationLink) // casi listo
 {
-  if (kErrorCode == status.code) {
-    if (status.reattempts == MAX_REATTEMPTS) {
-      return;
-    }
+  PrintStatus(Status::Code::kValidatingTemporaryEmailAddress);
+  CURL *curl = curl_easy_init();
 
-    status.reattempts++;
-  } else {
-    status.code = kErrorCode;
-    status.reattempts = 1;
-  }
+  if (curl) {
+    string html;
+    curl_easy_setopt(curl, CURLOPT_URL, kEmailValidationLink.c_str());
+    //curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &html);
 
-  switch (kErrorCode) {
-    case Status::Code::kErrorAt1: {
-      CreateYuisyAccount();
-      break;
-    }
+    CURLcode res;
+    int reattempts = 0;
 
-    case Status::Code::kErrorAt2: {
-      RequestAndCheckTemporaryEmailAddress();
-    }
+    do {
+      if (!html.empty()) html.clear();
+      res = curl_easy_perform(curl);
+
+      if (res == CURLE_OK) {
+        long http_status_code;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status_code);
+      }
+
+      reattempts++;
+
+      if (reattempts <= MAX_REATTEMPTS) {
+        PrintStatus(Status::Code::kRToValidateTemporaryEmailAddress, reattempts);
+      } else {
+        PrintStatus(Status::Code::kMaxReattemptsExceeced);
+        Action = nullptr;
+      }
+    } while (reattempts <= MAX_REATTEMPTS);
   }
 }
 
