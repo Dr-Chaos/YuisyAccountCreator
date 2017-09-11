@@ -21,8 +21,9 @@
 #define MAX_PASSWORD_LENGTH 16
 #define COUNTRY_ID 6
 #define MAX_REATTEMPTS 3
-#define EMAIL_VALIDATION_SLEEP_TIME 5000
-#define MAX_EMAIL_VALIDATION_REATTEMPTS 5
+#define EMAIL_VERIFICATION_ATTEMPT_SLEEP_TIME 2500
+#define EMAIL_VERIFICATION_REATTEMPT_SLEEP_TIME 5000
+#define MAX_EMAIL_VERIFICATION_REATTEMPTS 5
 
 
 using namespace std;
@@ -56,21 +57,22 @@ class Account {
 
     struct Status {
       enum class Code {
-        kStartingAccountCreation,
+        kStarting,
         kCreatingYuisyAccount,
         kYuisyAccountCreated,
         kNicknameAndEmailTaken,
         kNicknameTaken,
         kEmailTaken,
         kRToCreateYuisyAccount,
-        kMaxReattemptsExceeced,
+        kMaxReattemptsExceeded,
         kRequestingAndCheckingTemporaryEmailAddress,
-        kEmailValidationLinkFound,
-        kEmailValidationLinkNotFound,
-        kRToFindEmailValidationLink,
+        kEmailVerificationLinkFound,
+        kEmailVerificationLinkNotFound,
+        kRToFindEmailVerificationLink,
         kRToRequestAndCheckTemporaryEmailAddress,
-        kValidatingTemporaryEmailAddress,
-        kRToValidateTemporaryEmailAddress,
+        kVerifyingTemporaryEmailAddress,
+        kTemporaryEmailAddressVerifyed,
+        kRToVerifyTemporaryEmailAddress,
         kSuccess,
         kFail
       };
@@ -82,7 +84,7 @@ class Account {
     void PrintStatus(Status::Code, optional<int> = nullopt);
     void CreateYuisyAccount();
     void RequestAndCheckTemporaryEmailAddress();
-    void ValidateTemporaryEmailAddress(string);
+    void VerifyTemporaryEmailAddress(string);
 };
 
 const string Account::kDomain;
@@ -105,9 +107,7 @@ const string MultiAccount::kBaseName;
 int main()
 {
   locale::global(locale("spanish"));
-
-  cout << "# Yuisy Account Creator" << endl << "# Hecho por Mars.-" << endl << endl;
-
+  cout << "# Yuisy Account Creator\n# Hecho por Mars.-\n" << endl;
   curl_global_init(CURL_GLOBAL_ALL);
   Account::SetDomain(RequestDomainsList());
 
@@ -146,10 +146,9 @@ size_t WriteFunction(char *ptr, size_t size, size_t nmemb, string *userdata)
   return real_size;
 }
 
-vector<string> RequestDomainsList() // falta pulir
+vector<string> RequestDomainsList()
 {
   cout << "> Obteniendo lista de dominios para los emails temporales..." << endl;
-
   CURL *curl = curl_easy_init();
   vector<string> domains_list;
 
@@ -158,21 +157,42 @@ vector<string> RequestDomainsList() // falta pulir
     curl_easy_setopt(curl, CURLOPT_URL, "http://api.temp-mail.ru/request/domains/format/json/");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
-
     CURLcode res;
-    res = curl_easy_perform(curl);
+    int reattempts = 0;
 
-    if (res != CURLE_OK) {
-      cerr << "> No se ha podido obtener la lista." << endl;
-      system("PAUSE");
-      exit(EXIT_FAILURE);
-    }
+    do {
+      if (!json.empty()) json.clear();
+      res = curl_easy_perform(curl);
 
-    rapidjson::Document document;
-    const rapidjson::Value &kDomainsList = document.Parse(json);
+      if (res == CURLE_OK) {
+        long http_status_code;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status_code);
 
-    for (rapidjson::SizeType i = 0; i < kDomainsList.Size(); ++i)
-      domains_list.push_back(kDomainsList[i].GetString());
+        if (http_status_code == 200) {
+          rapidjson::Document document;
+          const rapidjson::Value &kDomainsList = document.Parse(json);
+
+          for (rapidjson::SizeType i = 0; i < kDomainsList.Size(); ++i)
+            domains_list.push_back(kDomainsList[i].GetString());
+
+          break;
+        }
+      }
+
+      reattempts++;
+
+      if (reattempts <= MAX_REATTEMPTS) {
+        fmt::print("> No se pudo obtener la lista. Reintentando ({}/{})...\n",
+          reattempts,
+          MAX_REATTEMPTS);
+      } else {
+        cout << "> Se han excedido los reintentos máximos. Cerrando programa automáticamente en 5 "
+          "segundos..." << endl;
+
+        Sleep(5000);
+        exit(EXIT_FAILURE);
+      }
+    } while (reattempts <= MAX_REATTEMPTS);
 
     curl_easy_cleanup(curl);
   }
@@ -201,6 +221,31 @@ int AskQuantity()
 
   return stoi(answer);
 }
+
+/* Hacer esto luego...
+int AskInitialID()
+{
+  bool first_attempt = true;
+  string answer;
+
+  do {
+    if (first_attempt) {
+      fmt::print("< Ingresa la cantidad de cuentas que quieres crear (Debe ser un número entre 1 y"
+        " {}).\n",
+        MAX_QUANTITY);
+
+      first_attempt = false;
+    }
+    else {
+      cout << "> Cantidad inválida." << endl;
+    }
+
+    cin >> answer;
+  } while (!regex_match(answer, regex("^([1-9]([0-9]{1,2})?)$")) || (stoi(answer) > MAX_QUANTITY));
+
+  return stoi(answer);
+}
+*/
 
 string AskName(const bool kMultiple)
 {
@@ -285,7 +330,7 @@ void Account::SetDomain(const vector<string> kDomainsList)
 void Account::Create()
 {
   SetEmail();
-  PrintStatus(Status::Code::kStartingAccountCreation);
+  PrintStatus(Status::Code::kStarting);
 
   do {
     Action();
@@ -302,7 +347,7 @@ void Account::SetEmail()
 void Account::PrintStatus(const Status::Code kStatusCode, const optional<int> kReattempt)
 {
   switch (kStatusCode) {
-    case Status::Code::kStartingAccountCreation: {
+    case Status::Code::kStarting: {
       fmt::print(" Nombre: {}.\n", kName.value());
       break;
     }
@@ -340,32 +385,35 @@ void Account::PrintStatus(const Status::Code kStatusCode, const optional<int> kR
       break;
     }
 
-    case Status::Code::kMaxReattemptsExceeced: {
+    case Status::Code::kMaxReattemptsExceeded: {
       cout << "  - Se han excedido los reintentos máximos." << endl;
       break;
     }
 
     case Status::Code::kRequestingAndCheckingTemporaryEmailAddress: {
-      cout << "  - Buscando enlace de confirmación de email en la bandeja de entrada..." << endl;
+      fmt::print("  - Buscando enlace de verificación de email en la bandeja de entrada en {} mili"
+        "segundos.\n",
+        EMAIL_VERIFICATION_ATTEMPT_SLEEP_TIME);
+
       break;
     }
 
-    case Status::Code::kEmailValidationLinkFound: {
+    case Status::Code::kEmailVerificationLinkFound: {
       cout << "  - Se ha encontrado el enlace." << endl;
       break;
     }
 
-    case Status::Code::kEmailValidationLinkNotFound: {
+    case Status::Code::kEmailVerificationLinkNotFound: {
       fmt::print("  - No se ha encontrado el enlace. Reintentando en {} milisegundos.\n",
-        EMAIL_VALIDATION_SLEEP_TIME);
+        EMAIL_VERIFICATION_REATTEMPT_SLEEP_TIME);
 
       break;
     }
 
-    case Status::Code::kRToFindEmailValidationLink: {
+    case Status::Code::kRToFindEmailVerificationLink: {
       fmt::print("  - Reintentando encontrar enlace ({}/{})...\n",
         kReattempt.value(),
-        MAX_EMAIL_VALIDATION_REATTEMPTS);
+        MAX_EMAIL_VERIFICATION_REATTEMPTS);
 
       break;
     }
@@ -378,13 +426,31 @@ void Account::PrintStatus(const Status::Code kStatusCode, const optional<int> kR
       break;
     }
 
+    case Status::Code::kVerifyingTemporaryEmailAddress: {
+      cout << "  - Verificando email..." << endl;
+      break;
+    }
+
+    case Status::Code::kTemporaryEmailAddressVerifyed: {
+      cout << "  - Se ha verificado el email." << endl;
+      break;
+    }
+
+    case Status::Code::kRToVerifyTemporaryEmailAddress: {
+      fmt::print("  - No se pudo verificar el email. Reintentando ({}/{})...\n",
+        kReattempt.value(),
+        MAX_REATTEMPTS);
+
+      break;
+    }
+
     case Status::Code::kSuccess: {
-      cout << "  - La cuenta está lista para ser usada." << endl;
+      cout << "  - La cuenta está lista para ser usada.\n" << endl;
       break;
     }
 
     case Status::Code::kFail: {
-      cout << "  - No se pudo crear la cuenta." << endl;
+      cout << "  - No se pudo crear la cuenta.\n" << endl;
     }
   }
 }
@@ -408,7 +474,6 @@ void Account::CreateYuisyAccount()
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &html);
-
     CURLcode res;
     int reattempts = 0;
 
@@ -453,7 +518,7 @@ void Account::CreateYuisyAccount()
       if (reattempts <= MAX_REATTEMPTS) {
         PrintStatus(Status::Code::kRToCreateYuisyAccount, reattempts);
       } else {
-        PrintStatus(Status::Code::kMaxReattemptsExceeced);
+        PrintStatus(Status::Code::kMaxReattemptsExceeded);
         Action = nullptr;
       }
     } while (reattempts <= MAX_REATTEMPTS);
@@ -465,6 +530,7 @@ void Account::CreateYuisyAccount()
 void Account::RequestAndCheckTemporaryEmailAddress()
 {
   PrintStatus(Status::Code::kRequestingAndCheckingTemporaryEmailAddress);
+  Sleep(EMAIL_VERIFICATION_ATTEMPT_SLEEP_TIME);
   CURL *curl = curl_easy_init();
 
   if (curl) {
@@ -478,7 +544,6 @@ void Account::RequestAndCheckTemporaryEmailAddress()
     curl_easy_setopt(curl, CURLOPT_URL, kUrl.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json);
-
     CURLcode res;
     int reattempts = 0;
     int email_validation_reattempts = 0;
@@ -492,24 +557,21 @@ void Account::RequestAndCheckTemporaryEmailAddress()
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status_code);
 
         if (http_status_code == 200) {
-          PrintStatus(Status::Code::kEmailValidationLinkFound);
-
+          PrintStatus(Status::Code::kEmailVerificationLinkFound);
           rapidjson::Document document;
           document.Parse(json);
-
-          string mail_text = document[0]["mail_text"].GetString();
-          mail_text.pop_back();
-
-          Action = bind(&Account::ValidateTemporaryEmailAddress, this,
-            mail_text.substr(mail_text.rfind("http")));
-
+          string mail_html = document[0]["mail_html"].GetString();
+          const string::size_type kLinkSP = mail_html.find("http:");
+          const string::size_type kLinkEP = mail_html.find("\" target");
+          const string kEmailVerificationLink = mail_html.substr(kLinkSP, (kLinkEP - kLinkSP));
+          Action = bind(&Account::VerifyTemporaryEmailAddress, this, kEmailVerificationLink);
           break;
         } else if (http_status_code == 404) {
-          if (email_validation_reattempts < MAX_EMAIL_VALIDATION_REATTEMPTS) {
-            PrintStatus(Status::Code::kEmailValidationLinkNotFound);
-            Sleep(EMAIL_VALIDATION_SLEEP_TIME);
+          if (email_validation_reattempts < MAX_EMAIL_VERIFICATION_REATTEMPTS) {
+            PrintStatus(Status::Code::kEmailVerificationLinkNotFound);
+            Sleep(EMAIL_VERIFICATION_REATTEMPT_SLEEP_TIME);
             email_validation_reattempts++;
-            PrintStatus(Status::Code::kRToFindEmailValidationLink, email_validation_reattempts);
+            PrintStatus(Status::Code::kRToFindEmailVerificationLink, email_validation_reattempts);
             continue;
           }
 
@@ -524,7 +586,7 @@ void Account::RequestAndCheckTemporaryEmailAddress()
       if (reattempts <= MAX_REATTEMPTS) {
         PrintStatus(Status::Code::kRToRequestAndCheckTemporaryEmailAddress, reattempts);
       } else {
-        PrintStatus(Status::Code::kMaxReattemptsExceeced);
+        PrintStatus(Status::Code::kMaxReattemptsExceeded);
         Action = nullptr;
       }
     } while (reattempts <= MAX_REATTEMPTS);
@@ -533,15 +595,15 @@ void Account::RequestAndCheckTemporaryEmailAddress()
   }
 }
 
-void Account::ValidateTemporaryEmailAddress(const string kEmailValidationLink) // casi listo
+void Account::VerifyTemporaryEmailAddress(const string kEmailVerificationLink)
 {
-  PrintStatus(Status::Code::kValidatingTemporaryEmailAddress);
+  PrintStatus(Status::Code::kVerifyingTemporaryEmailAddress);
   CURL *curl = curl_easy_init();
 
   if (curl) {
     string html;
-    curl_easy_setopt(curl, CURLOPT_URL, kEmailValidationLink.c_str());
-    //curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_URL, kEmailVerificationLink.c_str());
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFunction);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &html);
 
@@ -555,14 +617,21 @@ void Account::ValidateTemporaryEmailAddress(const string kEmailValidationLink) /
       if (res == CURLE_OK) {
         long http_status_code;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status_code);
+
+        if (http_status_code == 200) {
+          PrintStatus(Status::Code::kTemporaryEmailAddressVerifyed);
+          Action = nullptr;
+          status.success = true;
+          break;
+        }
       }
 
       reattempts++;
 
       if (reattempts <= MAX_REATTEMPTS) {
-        PrintStatus(Status::Code::kRToValidateTemporaryEmailAddress, reattempts);
+        PrintStatus(Status::Code::kRToVerifyTemporaryEmailAddress, reattempts);
       } else {
-        PrintStatus(Status::Code::kMaxReattemptsExceeced);
+        PrintStatus(Status::Code::kMaxReattemptsExceeded);
         Action = nullptr;
       }
     } while (reattempts <= MAX_REATTEMPTS);
